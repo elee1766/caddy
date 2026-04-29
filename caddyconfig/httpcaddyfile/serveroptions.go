@@ -28,11 +28,11 @@ import (
 	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
 )
 
-// serverOptions collects server config overrides parsed from Caddyfile global options
-type serverOptions struct {
+// ServerOptions collects server config overrides parsed from Caddyfile global options
+type ServerOptions struct {
 	// If set, will only apply these options to servers that contain a
 	// listener address that matches exactly. If empty, will apply to all
-	// servers that were not already matched by another serverOptions.
+	// servers that were not already matched by another ServerOptions.
 	ListenerAddress string
 
 	// These will all map 1:1 to the caddyhttp.Server struct
@@ -57,12 +57,15 @@ type serverOptions struct {
 	ShouldLogCredentials  bool
 	Metrics               *caddyhttp.Metrics
 	Trace                 bool // TODO: EXPERIMENTAL
+	// If set, overrides whether QUIC listeners allow 0-RTT (early data).
+	// If nil, the default behavior is used (currently allowed).
+	Allow0RTT *bool
 }
 
 func unmarshalCaddyfileServerOptions(d *caddyfile.Dispenser) (any, error) {
 	d.Next() // consume option name
 
-	serverOpts := serverOptions{}
+	serverOpts := ServerOptions{}
 	if d.NextArg() {
 		serverOpts.ListenerAddress = d.Val()
 		if d.NextArg() {
@@ -309,6 +312,17 @@ func unmarshalCaddyfileServerOptions(d *caddyfile.Dispenser) (any, error) {
 			}
 			serverOpts.Trace = true
 
+		case "0rtt":
+			// only supports "off" for now
+			if !d.NextArg() {
+				return nil, d.ArgErr()
+			}
+			if d.Val() != "off" {
+				return nil, d.Errf("unsupported 0rtt argument '%s' (only 'off' is supported)", d.Val())
+			}
+			boolVal := false
+			serverOpts.Allow0RTT = &boolVal
+
 		default:
 			return nil, d.Errf("unrecognized servers option '%s'", d.Val())
 		}
@@ -322,7 +336,7 @@ func applyServerOptions(
 	options map[string]any,
 	_ *[]caddyconfig.Warning,
 ) error {
-	serverOpts, ok := options["servers"].([]serverOptions)
+	serverOpts, ok := options["servers"].([]ServerOptions)
 	if !ok {
 		return nil
 	}
@@ -344,7 +358,7 @@ func applyServerOptions(
 
 	for key, server := range servers {
 		// find the options that apply to this server
-		optsIndex := slices.IndexFunc(serverOpts, func(s serverOptions) bool {
+		optsIndex := slices.IndexFunc(serverOpts, func(s ServerOptions) bool {
 			return s.ListenerAddress == "" || slices.Contains(server.Listen, s.ListenerAddress)
 		})
 
@@ -373,6 +387,7 @@ func applyServerOptions(
 		server.TrustedProxiesStrict = opts.TrustedProxiesStrict
 		server.TrustedProxiesUnix = opts.TrustedProxiesUnix
 		server.Metrics = opts.Metrics
+		server.Allow0RTT = opts.Allow0RTT
 		if opts.ShouldLogCredentials {
 			if server.Logs == nil {
 				server.Logs = new(caddyhttp.ServerLogConfig)

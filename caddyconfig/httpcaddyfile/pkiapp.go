@@ -16,6 +16,7 @@ package httpcaddyfile
 
 import (
 	"slices"
+	"strconv"
 
 	"github.com/caddyserver/caddy/v2"
 	"github.com/caddyserver/caddy/v2/caddyconfig"
@@ -27,14 +28,16 @@ func init() {
 	RegisterGlobalOption("pki", parsePKIApp)
 }
 
-// parsePKIApp parses the global log option. Syntax:
+// parsePKIApp parses the global pki option. Syntax:
 //
 //	pki {
 //	    ca [<id>] {
-//	        name                  <name>
-//	        root_cn               <name>
-//	        intermediate_cn       <name>
-//	        intermediate_lifetime <duration>
+//	        name                    <name>
+//	        root_cn                 <name>
+//	        intermediate_cn         <name>
+//	        intermediate_lifetime   <duration>
+//	        maintenance_interval    <duration>
+//	        renewal_window_ratio    <ratio>
 //	        root {
 //	            cert   <path>
 //	            key    <path>
@@ -98,6 +101,26 @@ func parsePKIApp(d *caddyfile.Dispenser, existingVal any) (any, error) {
 						return nil, err
 					}
 					pkiCa.IntermediateLifetime = caddy.Duration(dur)
+
+				case "maintenance_interval":
+					if !d.NextArg() {
+						return nil, d.ArgErr()
+					}
+					dur, err := caddy.ParseDuration(d.Val())
+					if err != nil {
+						return nil, err
+					}
+					pkiCa.MaintenanceInterval = caddy.Duration(dur)
+
+				case "renewal_window_ratio":
+					if !d.NextArg() {
+						return nil, d.ArgErr()
+					}
+					ratio, err := strconv.ParseFloat(d.Val(), 64)
+					if err != nil || ratio <= 0 || ratio > 1 {
+						return nil, d.Errf("renewal_window_ratio must be a number in (0, 1], got %s", d.Val())
+					}
+					pkiCa.RenewalWindowRatio = ratio
 
 				case "root":
 					if pkiCa.Root == nil {
@@ -171,6 +194,17 @@ func parsePKIApp(d *caddyfile.Dispenser, existingVal any) (any, error) {
 	return pki, nil
 }
 
+// BuildPKIApp builds the PKI app from server block pairings and global options.
+// This is exported for use by xcaddyfile and other adapters.
+func BuildPKIApp(
+	pairings ServerBlockPairings,
+	options map[string]any,
+	warnings []caddyconfig.Warning,
+) (*caddypki.PKI, []caddyconfig.Warning, error) {
+	st := ServerType{}
+	return st.buildPKIApp(pairings, options, warnings)
+}
+
 func (st ServerType) buildPKIApp(
 	pairings []sbAddrAssociation,
 	options map[string]any,
@@ -211,7 +245,7 @@ func (st ServerType) buildPKIApp(
 		for _, sblock := range p.serverBlocks {
 			// find all the CAs that were defined and add them to the app config
 			// i.e. from any "acme_server" directives
-			for _, caCfgValue := range sblock.pile["pki.ca"] {
+			for _, caCfgValue := range sblock.Pile["pki.ca"] {
 				ca := caCfgValue.Value.(*caddypki.CA)
 				if skipInstallTrust {
 					ca.InstallTrust = &falseBool

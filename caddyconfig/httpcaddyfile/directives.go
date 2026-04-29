@@ -202,7 +202,10 @@ func RegisterGlobalOption(opt string, setupFunc UnmarshalGlobalFunc) {
 type Helper struct {
 	*caddyfile.Dispenser
 	// State stores intermediate variables during caddyfile adaptation.
-	State        map[string]any
+	State map[string]any
+	// BlockState stores intermediate variables scoped to the current block.
+	// It propagates down, but unlike state not back up from child to parent.
+	BlockState   map[string]any
 	options      map[string]any
 	warnings     *[]caddyconfig.Warning
 	matcherDefs  map[string]caddy.ModuleMap
@@ -385,6 +388,11 @@ func parseSegmentAsConfig(h Helper) ([]ConfigValue, error) {
 			}
 		}
 
+		// clone BlockState once for the entire block so sibling directives
+		// can share state, but changes don't leak to the parent scope
+		subBlockState := make(map[string]any, len(h.BlockState))
+		maps.Copy(subBlockState, h.BlockState)
+
 		// with matchers ready to go, evaluate each directive's segment
 		for _, seg := range segments {
 			dir := seg.Directive()
@@ -396,6 +404,7 @@ func parseSegmentAsConfig(h Helper) ([]ConfigValue, error) {
 			subHelper := h
 			subHelper.Dispenser = caddyfile.NewDispenser(seg)
 			subHelper.matcherDefs = matcherDefs
+			subHelper.BlockState = subBlockState
 
 			results, err := dirFunc(subHelper)
 			if err != nil {
@@ -530,13 +539,13 @@ func sortRoutes(routes []ConfigValue) {
 	})
 }
 
-// serverBlock pairs a Caddyfile server block with
-// a "pile" of config values, keyed by class name,
-// as well as its parsed keys for convenience.
-type serverBlock struct {
-	block      caddyfile.ServerBlock
-	pile       map[string][]ConfigValue // config values obtained from directives
-	parsedKeys []Address
+// ServerBlock pairs a Caddyfile server block with a "pile" of config values,
+// keyed by class name, as well as its parsed keys for convenience.
+// This is the unified type used by both httpcaddyfile and xcaddyfile.
+type ServerBlock struct {
+	Block      caddyfile.ServerBlock
+	Pile       map[string][]ConfigValue // config values obtained from directives
+	ParsedKeys []Address
 }
 
 // hostsFromKeys returns a list of all the non-empty hostnames found in
@@ -550,10 +559,10 @@ type serverBlock struct {
 // header of requests that come in for that key.
 //
 // The resulting slice is not sorted but will never have duplicates.
-func (sb serverBlock) hostsFromKeys(loggerMode bool) []string {
+func (sb ServerBlock) hostsFromKeys(loggerMode bool) []string {
 	// ensure each entry in our list is unique
 	hostMap := make(map[string]struct{})
-	for _, addr := range sb.parsedKeys {
+	for _, addr := range sb.ParsedKeys {
 		if addr.Host == "" {
 			if !loggerMode {
 				// server block contains a key like ":443", i.e. the host portion
@@ -582,10 +591,10 @@ func (sb serverBlock) hostsFromKeys(loggerMode bool) []string {
 	return sblockHosts
 }
 
-func (sb serverBlock) hostsFromKeysNotHTTP(httpPort string) []string {
+func (sb ServerBlock) hostsFromKeysNotHTTP(httpPort string) []string {
 	// ensure each entry in our list is unique
 	hostMap := make(map[string]struct{})
-	for _, addr := range sb.parsedKeys {
+	for _, addr := range sb.ParsedKeys {
 		if addr.Host == "" {
 			continue
 		}
@@ -605,16 +614,16 @@ func (sb serverBlock) hostsFromKeysNotHTTP(httpPort string) []string {
 
 // hasHostCatchAllKey returns true if sb has a key that
 // omits a host portion, i.e. it "catches all" hosts.
-func (sb serverBlock) hasHostCatchAllKey() bool {
-	return slices.ContainsFunc(sb.parsedKeys, func(addr Address) bool {
+func (sb ServerBlock) hasHostCatchAllKey() bool {
+	return slices.ContainsFunc(sb.ParsedKeys, func(addr Address) bool {
 		return addr.Host == ""
 	})
 }
 
 // isAllHTTP returns true if all sb keys explicitly specify
 // the http:// scheme
-func (sb serverBlock) isAllHTTP() bool {
-	return !slices.ContainsFunc(sb.parsedKeys, func(addr Address) bool {
+func (sb ServerBlock) isAllHTTP() bool {
+	return !slices.ContainsFunc(sb.ParsedKeys, func(addr Address) bool {
 		return addr.Scheme != "http"
 	})
 }
