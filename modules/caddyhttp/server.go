@@ -923,10 +923,6 @@ func (s *Server) buildHTTP3Server(tlsCfg *tls.Config) *http3.Server {
 	}
 	if s.EnableWebTransport {
 		webtransport.ConfigureHTTP3Server(h3)
-		if s.logger != nil {
-			s.logger.Info("configured WebTransport HTTP/3 server",
-				zap.Any("additional_settings", h3.AdditionalSettings))
-		}
 	}
 	return h3
 }

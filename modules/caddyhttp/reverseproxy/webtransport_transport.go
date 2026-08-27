@@ -157,8 +157,6 @@ func (h *Handler) webTransportHijack(rw http.ResponseWriter, req, downstreamReq 
 		return DialError{fmt.Errorf("webtransport upstream dial: %w", err)}
 	}
 	defer upstreamResp.Body.Close()
-	h.logger.Info("webtransport upstream session established",
-		zap.String("application_protocol", upstreamResp.Header.Get("WT-Protocol")))
 
 	// Response-header ops (gated by Require, if configured) apply to the
 	// upstream response before its headers are copied to the naked writer.
@@ -178,10 +176,8 @@ func (h *Handler) webTransportHijack(rw http.ResponseWriter, req, downstreamReq 
 		return terminalError{caddyhttp.Error(http.StatusBadRequest,
 			fmt.Errorf("webtransport upgrade: %w", err))}
 	}
-	h.logger.Info("webtransport downstream session established")
 
 	runWebTransportPump(clientSess, upstreamSess, h.logger)
-	h.logger.Info("webtransport session pump stopped")
 	return nil
 }
 
