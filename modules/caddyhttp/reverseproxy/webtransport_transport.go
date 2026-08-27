@@ -173,6 +173,7 @@ func (h *Handler) webTransportHijack(rw http.ResponseWriter, req *http.Request, 
 
 	clientSess, err := wtServer.Upgrade(naked, req)
 	if err != nil {
+		h.logger.Error("webtransport downstream upgrade failed", zap.Error(err))
 		_ = upstreamSess.CloseWithError(0, "client upgrade failed")
 		return terminalError{caddyhttp.Error(http.StatusBadRequest,
 			fmt.Errorf("webtransport upgrade: %w", err))}
