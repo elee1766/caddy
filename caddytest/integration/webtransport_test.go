@@ -41,7 +41,7 @@ import (
 
 // TestWebTransport_EchoHandlerBidi spins up Caddy with an HTTP/3 listener
 // that terminates a WebTransport session via the http.handlers.webtransport
-// echo handler, then dials it with a real webtransport.Dialer and asserts
+// echo handler, then dials it with a real webtransport.Transport and asserts
 // an end-to-end bidirectional-stream round-trip. This exercises the
 // serveH3AcceptLoop path (webtransport.Server.ServeQUICConn instead of
 // http3.Server.ServeListener) and the UnwrapResponseWriterAs helper.
@@ -97,7 +97,7 @@ func TestWebTransport_EchoHandlerBidi(t *testing.T) {
   }
 }`, "json")
 
-	dialer := &webtransport.Dialer{
+	dialer := &webtransport.Transport{
 		TLSClientConfig: &tls.Config{
 			InsecureSkipVerify: true, //nolint:gosec // test uses a local CA
 			ServerName:         "a.caddy.localhost",
@@ -162,7 +162,7 @@ func TestWebTransport_EchoHandlerBidi(t *testing.T) {
 // TestWebTransport_ReverseProxyEndToEnd spins up a single Caddy instance
 // running two HTTP/3 servers: one on :9443 acting as the WebTransport
 // reverse proxy, and one on :9444 acting as the terminating echo
-// upstream. A real webtransport.Dialer dials the proxy; the pump should
+// upstream. A real webtransport.Transport dials the proxy; the pump should
 // bridge to the upstream so bytes written on a bidi stream are echoed.
 func TestWebTransport_ReverseProxyEndToEnd(t *testing.T) {
 	if testing.Short() {
@@ -240,7 +240,7 @@ func TestWebTransport_ReverseProxyEndToEnd(t *testing.T) {
   }
 }`, "json")
 
-	dialer := &webtransport.Dialer{
+	dialer := &webtransport.Transport{
 		TLSClientConfig: &tls.Config{
 			InsecureSkipVerify: true, //nolint:gosec // local CA
 			ServerName:         "a.caddy.localhost",
@@ -379,7 +379,7 @@ func TestWebTransport_ReverseProxyForwardsHeaders(t *testing.T) {
 	tester := caddytest.NewTester(t)
 	tester.InitServer(config, "json")
 
-	dialer := &webtransport.Dialer{
+	dialer := &webtransport.Transport{
 		TLSClientConfig: &tls.Config{
 			InsecureSkipVerify: true, //nolint:gosec // local CA
 			ServerName:         "a.caddy.localhost",
@@ -513,7 +513,7 @@ func TestWebTransport_ReverseProxyExpandsSNIPlaceholder(t *testing.T) {
 	tester := caddytest.NewTester(t)
 	tester.InitServer(config, "json")
 
-	dialer := &webtransport.Dialer{
+	dialer := &webtransport.Transport{
 		TLSClientConfig: &tls.Config{
 			InsecureSkipVerify: true, //nolint:gosec // local CA
 			ServerName:         "a.caddy.localhost",
@@ -629,7 +629,7 @@ func TestWebTransport_UpstreamDialFailureSurfaces5xx(t *testing.T) {
 	tester := caddytest.NewTester(t)
 	tester.InitServer(config, "json")
 
-	dialer := &webtransport.Dialer{
+	dialer := &webtransport.Transport{
 		TLSClientConfig: &tls.Config{
 			InsecureSkipVerify: true, //nolint:gosec // local CA
 			ServerName:         "a.caddy.localhost",
@@ -758,7 +758,7 @@ func TestWebTransport_InFlightRequestsTracked(t *testing.T) {
 	tester := caddytest.NewTester(t)
 	tester.InitServer(config, "json")
 
-	dialer := &webtransport.Dialer{
+	dialer := &webtransport.Transport{
 		TLSClientConfig: &tls.Config{
 			InsecureSkipVerify: true, //nolint:gosec // local CA
 			ServerName:         "a.caddy.localhost",

@@ -183,7 +183,7 @@ func (h *Handler) webTransportHijack(rw http.ResponseWriter, req *http.Request, 
 // urlStr (an https URL), forwarding reqHdr as headers on the Extended
 // CONNECT request. The returned session is owned by the caller and must be
 // closed when no longer in use. Return-value order matches
-// webtransport.Dialer.Dial: (response, session, error).
+// webtransport.Transport.Dial: (response, session, error).
 //
 // EXPERIMENTAL: this helper is an internal building block for the upcoming
 // WebTransport reverse-proxy transport. Shape and behavior may change.
@@ -192,7 +192,7 @@ func dialUpstreamWebTransport(ctx context.Context, tlsCfg *tls.Config, urlStr st
 	if err != nil {
 		return nil, nil, err
 	}
-	d := &webtransport.Dialer{
+	d := &webtransport.Transport{
 		TLSClientConfig: tlsCfg,
 		QUICConfig: &quic.Config{
 			EnableDatagrams:                  true,
