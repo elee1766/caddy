@@ -59,7 +59,7 @@ func startTestWebTransportServer(t *testing.T, handler func(s *webtransport.Sess
 	// internally for the real server.)
 	webtransport.ConfigureHTTP3Server(h3)
 
-	wtServer := &webtransport.Server{H3: h3}
+	wtServer := &webtransport.Server{H3: h3, ApplicationProtocols: []string{"caddy-test"}}
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		sess, err := wtServer.Upgrade(w, r)
 		if err != nil {
@@ -182,6 +182,34 @@ func TestDialUpstreamWebTransport_ForwardsHeaders(t *testing.T) {
 	}
 }
 
+func TestDialUpstreamWebTransport_NegotiatesApplicationProtocol(t *testing.T) {
+	if testing.Short() {
+		t.Skip()
+	}
+	addr, root, shutdown := startTestWebTransportServer(t, func(sess *webtransport.Session, _ *http.Request) {
+		_ = sess.CloseWithError(0, "")
+	})
+	t.Cleanup(shutdown)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	headers := make(http.Header)
+	headers.Set("WT-Available-Protocols", `"caddy-test"`)
+
+	url := fmt.Sprintf("https://localhost:%d/", addr.Port)
+	response, session, err := dialUpstreamWebTransport(ctx, clientTLSFor(root), url, headers)
+	if err != nil {
+		t.Fatalf("dial failed: %v", err)
+	}
+	defer session.CloseWithError(0, "")
+	if got := response.Header.Get("WT-Protocol"); got != `"caddy-test"` {
+		t.Fatalf("WT-Protocol = %q, want %q", got, `"caddy-test"`)
+	}
+	if got := session.SessionState().ApplicationProtocol; got != "caddy-test" {
+		t.Fatalf("negotiated application protocol = %q, want caddy-test", got)
+	}
+}
+
 func TestDialUpstreamWebTransport_BadAddress(t *testing.T) {
 	if testing.Short() {
 		t.Skip()
@@ -211,4 +239,3 @@ func pickFreeUDPPort(t *testing.T) int {
 	_ = l.Close()
 	return port
 }
-

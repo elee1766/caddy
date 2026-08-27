@@ -389,6 +389,7 @@ func TestWebTransport_ReverseProxyForwardsHeaders(t *testing.T) {
 			EnableDatagrams:                  true,
 			EnableStreamResetPartialDelivery: true,
 		},
+		ApplicationProtocols: []string{"caddy-test"},
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -408,6 +409,9 @@ func TestWebTransport_ReverseProxyForwardsHeaders(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 	}
 	defer sess.CloseWithError(0, "")
+	if got := sess.SessionState().ApplicationProtocol; got != "caddy-test" {
+		t.Fatalf("negotiated application protocol = %q, want caddy-test", got)
+	}
 
 	select {
 	case hdr := <-gotHeaders:
@@ -839,7 +843,7 @@ func startStandaloneWebTransport(t *testing.T, handler func(s *webtransport.Sess
 		},
 	}
 	webtransport.ConfigureHTTP3Server(h3)
-	wtServer := &webtransport.Server{H3: h3}
+	wtServer := &webtransport.Server{H3: h3, ApplicationProtocols: []string{"caddy-test"}}
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		sess, err := wtServer.Upgrade(w, r)
 		if err != nil {

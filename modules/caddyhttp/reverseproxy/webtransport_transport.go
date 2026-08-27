@@ -22,6 +22,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/dunglas/httpsfv"
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
 	"github.com/quic-go/webtransport-go"
@@ -157,16 +158,15 @@ func (h *Handler) webTransportHijack(rw http.ResponseWriter, req *http.Request, 
 	defer upstreamResp.Body.Close()
 
 	// Response-header ops (gated by Require, if configured) apply to the
-	// 200 OK the client will see. webtransport.Server.Upgrade flushes
-	// w.Header() along with the status, so setting these before Upgrade
-	// is sufficient. Matching against the upstream response mirrors the
-	// normal proxy path where upstream response == client response.
+	// upstream response before its headers are copied to the naked writer.
+	// Upgrade flushes that writer directly, bypassing Caddy's wrappers.
 	if h.Headers != nil && h.Headers.Response != nil {
 		if h.Headers.Response.Require == nil ||
 			h.Headers.Response.Require.Match(upstreamResp.StatusCode, upstreamResp.Header) {
-			h.Headers.Response.ApplyTo(rw.Header(), repl)
+			h.Headers.Response.ApplyTo(upstreamResp.Header, repl)
 		}
 	}
+	copyHeader(naked.Header(), upstreamResp.Header)
 
 	clientSess, err := wtServer.Upgrade(naked, req)
 	if err != nil {
@@ -188,12 +188,41 @@ func (h *Handler) webTransportHijack(rw http.ResponseWriter, req *http.Request, 
 // EXPERIMENTAL: this helper is an internal building block for the upcoming
 // WebTransport reverse-proxy transport. Shape and behavior may change.
 func dialUpstreamWebTransport(ctx context.Context, tlsCfg *tls.Config, urlStr string, reqHdr http.Header) (*http.Response, *webtransport.Session, error) {
+	protocols, err := webTransportApplicationProtocols(reqHdr)
+	if err != nil {
+		return nil, nil, err
+	}
 	d := &webtransport.Dialer{
 		TLSClientConfig: tlsCfg,
 		QUICConfig: &quic.Config{
 			EnableDatagrams:                  true,
 			EnableStreamResetPartialDelivery: true,
 		},
+		ApplicationProtocols: protocols,
 	}
 	return d.Dial(ctx, urlStr, reqHdr)
+}
+
+func webTransportApplicationProtocols(header http.Header) ([]string, error) {
+	values := header[http.CanonicalHeaderKey("WT-Available-Protocols")]
+	if len(values) == 0 {
+		return nil, nil
+	}
+	list, err := httpsfv.UnmarshalList(values)
+	if err != nil {
+		return nil, fmt.Errorf("parse WT-Available-Protocols: %w", err)
+	}
+	protocols := make([]string, 0, len(list))
+	for _, member := range list {
+		item, ok := member.(httpsfv.Item)
+		if !ok {
+			return nil, errors.New("parse WT-Available-Protocols: expected an item")
+		}
+		protocol, ok := item.Value.(string)
+		if !ok {
+			return nil, errors.New("parse WT-Available-Protocols: expected a string")
+		}
+		protocols = append(protocols, protocol)
+	}
+	return protocols, nil
 }
