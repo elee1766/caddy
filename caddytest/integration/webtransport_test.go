@@ -344,7 +344,10 @@ func TestWebTransport_ReverseProxyForwardsHeaders(t *testing.T) {
                   },
                   "headers": {
                     "request": {
-                      "set": {"X-Caddy-Test": ["caddy-wt-hdr"]}
+                      "set": {
+                        "Host": ["upstream.internal"],
+                        "X-Caddy-Test": ["caddy-wt-hdr"]
+                      }
                     }
                   },
                   "upstreams": [{"dial": "127.0.0.1:%d"}]
@@ -396,9 +399,10 @@ func TestWebTransport_ReverseProxyForwardsHeaders(t *testing.T) {
 	defer cancel()
 
 	var sess *webtransport.Session
+	requestHeader := http.Header{"Origin": []string{"https://127.0.0.1:9443"}}
 	deadline := time.Now().Add(3 * time.Second)
 	for {
-		_, s, err := dialer.Dial(ctx, "https://127.0.0.1:9443/", nil)
+		_, s, err := dialer.Dial(ctx, "https://127.0.0.1:9443/", requestHeader)
 		if err == nil {
 			sess = s
 			break
@@ -843,7 +847,11 @@ func startStandaloneWebTransport(t *testing.T, handler func(s *webtransport.Sess
 		},
 	}
 	webtransport.ConfigureHTTP3Server(h3)
-	wtServer := &webtransport.Server{H3: h3, ApplicationProtocols: []string{"caddy-test"}}
+	wtServer := &webtransport.Server{
+		H3:                   h3,
+		ApplicationProtocols: []string{"caddy-test"},
+		CheckOrigin:          func(*http.Request) bool { return true },
+	}
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		sess, err := wtServer.Upgrade(w, r)
 		if err != nil {

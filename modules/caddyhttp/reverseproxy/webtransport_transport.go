@@ -102,7 +102,7 @@ func (h *HTTPTransport) webTransportTLSConfig() *tls.Config {
 //
 // Requests that reach this function are already known to be WebTransport;
 // callers should gate with isWebTransportExtendedConnect.
-func (h *Handler) webTransportHijack(rw http.ResponseWriter, req *http.Request, repl *caddy.Replacer, di DialInfo, server *caddyhttp.Server) error {
+func (h *Handler) webTransportHijack(rw http.ResponseWriter, req, downstreamReq *http.Request, repl *caddy.Replacer, di DialInfo, server *caddyhttp.Server) error {
 	wtServer, ok := server.WebTransportServer().(*webtransport.Server)
 	if !ok || wtServer == nil {
 		return terminalError{caddyhttp.Error(http.StatusInternalServerError,
@@ -171,7 +171,7 @@ func (h *Handler) webTransportHijack(rw http.ResponseWriter, req *http.Request, 
 	}
 	copyHeader(naked.Header(), upstreamResp.Header)
 
-	clientSess, err := wtServer.Upgrade(naked, req)
+	clientSess, err := wtServer.Upgrade(naked, downstreamReq)
 	if err != nil {
 		h.logger.Error("webtransport downstream upgrade failed", zap.Error(err))
 		_ = upstreamSess.CloseWithError(0, "client upgrade failed")
